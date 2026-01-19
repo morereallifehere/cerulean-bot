@@ -240,40 +240,50 @@ async def my_stats(update: Update, context):
         
     await update.effective_message.reply_text(text, parse_mode="Markdown")
 
-# --- WEBHOOK ROUTE ---
+# ... (keep all your imports and functions above unchanged)
+
+# --- WEBHOOK ROUTE (FIXED) ---
 @app.route("/", methods=["POST", "GET"])
 def webhook():
     if request.method == "POST":
         if request.is_json:
+            # 1. Decode the update
             update = Update.de_json(request.get_json(force=True), bot_app.bot)
             
-            # Add Handlers
-            bot_app.add_handler(CommandHandler("start", start))
-            bot_app.add_handler(CommandHandler("become_ambassador", become_ambassador))
-            bot_app.add_handler(CommandHandler("get_referral_link", get_ref_link)) # Fixed command
-            bot_app.add_handler(CommandHandler("export", export_data))
-            bot_app.add_handler(CommandHandler("stats", my_stats))
-            
-            # Callbacks
-            bot_app.add_handler(CallbackQueryHandler(become_ambassador, pattern="^become_amb$"))
-            bot_app.add_handler(CallbackQueryHandler(get_ref_link, pattern="^get_ref$"))
-            bot_app.add_handler(CallbackQueryHandler(my_stats, pattern="^my_stats$"))
-            bot_app.add_handler(CallbackQueryHandler(verify_task, pattern="^verify_"))
-            
-            # Message Handler (Engagement)
-            bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, track_engagement))
-            
-            # Run
+            # 2. Define the async logic wrapper
+            async def main():
+                # Critical Step: Initialize the bot if it hasn't started yet
+                if not bot_app._initialized:
+                    await bot_app.initialize()
+
+                # Re-add handlers (stateless environment)
+                bot_app.add_handler(CommandHandler("start", start))
+                bot_app.add_handler(CommandHandler("become_ambassador", become_ambassador))
+                bot_app.add_handler(CommandHandler("get_referral_link", get_ref_link))
+                bot_app.add_handler(CommandHandler("export", export_data))
+                bot_app.add_handler(CommandHandler("stats", my_stats))
+                
+                # Callbacks
+                bot_app.add_handler(CallbackQueryHandler(become_ambassador, pattern="^become_amb$"))
+                bot_app.add_handler(CallbackQueryHandler(get_ref_link, pattern="^get_ref$"))
+                bot_app.add_handler(CallbackQueryHandler(my_stats, pattern="^my_stats$"))
+                bot_app.add_handler(CallbackQueryHandler(verify_task, pattern="^verify_"))
+                
+                # Message Handler
+                bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, track_engagement))
+
+                # Process the update
+                await bot_app.process_update(update)
+
+            # 3. Run the async loop
+            import asyncio
             try:
-                # We use await here inside the Flask async context if available, 
-                # but standard Flask is sync. We use the asyncio loop:
-                import asyncio
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                loop.run_until_complete(bot_app.process_update(update))
-                loop.close()
-            except Exception as e:
-                logger.error(f"Error: {e}")
+            
+            loop.run_until_complete(main())
                 
             return "ok"
         return "Not JSON", 400
