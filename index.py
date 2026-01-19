@@ -53,20 +53,25 @@ async def become_ambassador(update: Update, context):
     await update.message.reply_text(f"👑 You are now an Ambassador!\nLink: `{link}`", parse_mode="Markdown")
 
 # --- THE WEBHOOK ROUTE (The Heart of Vercel) ---
-@app.route("/", methods=["POST"])
+# ... (your imports and setup)
+
+@app.route("/", methods=["POST", "GET"])  # <--- CHANGED THIS LINE
 def webhook():
     if request.method == "POST":
         # Process the update from Telegram
-        update = Update.de_json(request.get_json(force=True), bot_app.bot)
+        if request.is_json:
+            update = Update.de_json(request.get_json(force=True), bot_app.bot)
+            
+            # Re-add handlers (stateless)
+            bot_app.add_handler(CommandHandler("start", start))
+            bot_app.add_handler(CommandHandler("become_ambassador", become_ambassador))
+            
+            asyncio.run(bot_app.process_update(update))
+            return "ok"
+        return "Not JSON", 400
         
-        # Add Handlers dynamically (stateless)
-        bot_app.add_handler(CommandHandler("start", start))
-        bot_app.add_handler(CommandHandler("become_ambassador", become_ambassador))
-        # Add more handlers here from your original bot.py...
-        
-        # Run the update
-        asyncio.run(bot_app.process_update(update))
-        return "ok"
-    return "env running"
+    # This part runs when YOU visit the page in your browser
+    return "Bot is running! Go back to Telegram."
+
 
 import asyncio
